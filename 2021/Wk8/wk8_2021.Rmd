@@ -1,0 +1,180 @@
+---
+title: "Tidy Tuesday - Wk 8 2021"
+author: "KVP"
+date: "2/16/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidytuesdayR)
+library(tidyverse)
+library(data.table)
+library(RColorBrewer)
+library(plotly)
+library(echarts4r)
+
+tuesdata <- tidytuesdayR::tt_load(2021, week = 8)
+```
+
+## Load in data as data.frames
+```{r load_data, echo=FALSE}
+names(tuesdata)
+list2env(tuesdata,globalenv())
+rm(tuesdata)
+```
+
+## challenge01: Comparative Increase of White and Colored Population in Georgia
+```{r challenge01_data}
+names(georgia_pop)
+head(georgia_pop)
+```
+
+After looking at the data we will need to convert it from a wide to long format. Great time to practice using `pivot_longer`. First, we need to select the colums we want to convert to the long format. We select `Colored` and `White` columns so we can convert them to a single `Race` column. We will then put the values into the created `perc_change` column.
+```{r challenge01_data_format}
+georgia_pop_long <- georgia_pop %>% pivot_longer(cols = c("Colored", "White"),
+                                                 names_to = "Race",
+                                                 values_to = "perc_change")
+```
+
+A simple line plot of the population change over time. 
+```{r challenge01}
+ggplot(data = georgia_pop_long, 
+       aes(x = Year, y = perc_change, linetype = Race, color = Race)) +
+  geom_line(size =1) + theme_minimal() + ylab("% Change")
+```
+
+## challenge02: Conjugal Condition
+```{r challenge02_data}
+head(conjugal)
+names(conjugal)
+```
+
+Another chance to practice `pivot_longer`! 
+```{r challenge02_data_format}
+conjugal_long <- conjugal %>%
+  pivot_longer(cols = c(Single, Married, `Divorced and Widowed`),
+               names_to = "status", values_to = "frac") %>% 
+  as.data.frame()
+```
+
+```{r challenge02}
+ggplot(data = conjugal_long, aes(x = Population, y = frac, fill = status, 
+                                 label = paste(frac, "%", sep = ""))) + 
+  geom_bar(position="stack", stat="identity") +
+  ylab("Proportion") + xlab("") +
+  geom_text(size = 3, position = position_stack(vjust = 0.5)) +
+  facet_wrap(vars(Age), ncol =1) + coord_flip() + theme_minimal() +
+  theme(legend.position='bottom', legend.title = element_blank())
+```
+Had a silly typo here where I had `population` instead of `Population`
+
+I do not know why it never dawned on me that I can flip bar charts so they are easier to read. Typically I just rotate the x-axis labels 45 degrees. Flipping the coordinates make the graphs easier to read and interpret.
+
+Now to figure out how to change the shape of the legend color indicators from squares to circles. After some googling I found this on  [stackoverflow](https://stackoverflow.com/questions/40469757/change-the-shape-of-legend-key-for-geom-bar-in-ggplot2)
+
+
+
+```{r challenge02_custom}
+df_empty = data.frame(Population = c(NA, NA, NA),
+                 status = c("Divorced and Widowed", "Married", "Single"),
+                 frac = as.numeric(c(NA, NA, NA)))
+
+ggplot(data = conjugal_long, aes(x = Population, y = frac, fill = status,
+                                 color = status,
+                                 label = paste(frac, "%", sep = ""))) + 
+  geom_bar(position="stack", stat="identity", show.legend = FALSE) +
+  geom_point(data = df_empty, aes(x = Population, y = frac, color = status), size=4,
+             shape = 20) +
+  ylab("Proportion") + xlab("") +
+  geom_text(size = 3, position = position_stack(vjust = 0.5), color ="black") +
+  facet_wrap(vars(Age), ncol =1) + coord_flip() + theme_minimal() +
+  theme(legend.position='bottom', legend.title = element_blank(), 
+        legend.key = element_blank()) 
+    
+```
+*Solved!* The above stackoverflow was a great resource. You will need to do the following:
+1. Create a data frame that is empty for your x and y variables. For your fill variable, make a list of your categories. In the `df_empty` below you see that Population and frac are set to a list of `NA` while status is a list of our status categories
+2. Hide the legend for the bar plot by adding `show.legend = FALSE`
+3. Add a geom_point using the `df_empty` data frame. **Note you can change the shape to whatever you want your legend shape to be**
+
+
+## challenge03: Occupations of Negroes and Whites in Georgia
+Okay, so this one is a tricky pie chart. The plot looks like a fan that is reflected. The negro plot is the top half and the white plot is the bottom half. First I am going to make a simple pie chart for each and then if I am feelimg ambitious I will try to get the fan plot to work.
+
+
+I do not make pie charts often, but when I do I always need a tutorial. The base r has a pie chart package, but I want to stick with ggplot. So I have to first make a bar chart (go figure) then apply `coord_polar`
+
+
+```{r challenge03_data}
+names(occupation)
+head(occupation)
+```
+
+```{r challenge03}
+ggplot(occupation, aes(x="", y=Percentage, fill=Occupation)) + 
+  geom_bar(stat="identity", width=1) + # Create a basic bar
+  facet_wrap(vars(Group), ncol =2) +
+  coord_polar("y", start=0) + # Convert to pie (polar coordinates) 
+  geom_text(aes(label = paste0(round(Percentage*100), "%")), 
+            position = position_stack(vjust = 0.5)) + # add labels
+  labs(x = NULL, y = NULL, fill = NULL, title = "Occupations of Negros and Whites in Georgia") +
+  theme_classic() + theme(axis.line = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          plot.title = element_text(hjust = 0.5, color = "#666666"))
+```
+
+Whoops `#fail`, lets try this again...
+```{r challenge03_fix}
+ggplot(occupation, aes(x="", y=Percentage, fill=Occupation)) + 
+  geom_bar(stat="identity", width=1) + # Create a basic bar
+  facet_wrap(vars(Group), ncol =2) +
+  coord_polar("y", start=0) + # Convert to pie (polar coordinates) 
+  geom_text(aes(label = paste0(round(Percentage), "%")), 
+            position = position_stack(vjust = 0.5)) + # add labels
+  labs(x = NULL, y = NULL, fill = NULL, title = "Occupations of Negros and Whites in Georgia") +
+  theme_classic() + theme(axis.line = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          plot.title = element_text(hjust = 0.5, color = "#666666"),
+          legend.position='bottom', 
+          legend.title =  element_blank(),
+        legend.key = element_blank())
+```
+
+
+## challenge04: Proportion of Freeman and Slaves Among American Negroes
+```{r challenge04_data}
+names(freed_slaves)
+head(freed_slaves)
+```
+
+```{r challenge04}
+ggplot(data = freed_slaves, aes(x = Year, y = Slave)) + geom_area() +
+  geom_area(data = freed_slaves, aes(x = Year, y = Free) , fill = "green") +
+  theme(panel.border = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          axis.line = element_line(size = 0.5, linetype = "solid",
+                                   colour = "black"))
+  
+```
+
+hmm, okay, now I need to flip the Free group. After some googleing it looks like I probably need to make it into a long format datbase: https://www.r-graph-gallery.com/136-stacked-area-chart.html
+```{r challenge04_cont}
+freed_slaves_long <- freed_slaves %>% pivot_longer(cols = c("Slave", "Free"),
+                                                   names_to = "group",
+                                                   values_to = "perc")
+
+ggplot(data = freed_slaves_long, aes(x = Year, y = perc, fill = group)) + 
+  geom_area() + 
+  ylab("Percent") + 
+  scale_fill_manual(values = c("forestgreen", "black")) + 
+  theme(panel.border = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          axis.line = element_line(size = 0.5, linetype = "solid",
+                                   colour = "black"))
+  
+```
