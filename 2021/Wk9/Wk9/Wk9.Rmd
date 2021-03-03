@@ -1,0 +1,226 @@
+---
+title: "WK9"
+author: "KVP"
+date: "2/25/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidytuesdayR)
+library(data.table)
+library(DT)
+library(data.table)
+library(tictoc)
+library(ggsci)
+
+tuesdata <- tidytuesdayR::tt_load(2021, week = 9)
+
+```
+
+## Data to dataframes
+```{r}
+list2env(tuesdata,globalenv())
+rm(tuesdata)
+
+head(earn)
+head(employed)
+
+
+employed.dt <- as.data.table(employed)
+```
+
+## Compare tidyvers to data.table
+`data.table` is more performant than `tidyverse`, but I have not used `data.table` a lot. The datasets I work with are not **HUGE** but if I could save some time and memory that is always good. 
+
+### Subset data
+Let's start with one of the most common operations I need to do - filtering data. While tidyverse has the `filter()` function, data.table works a little differently. Unlike data frames, data tables have the format of `DT[i, j, by]`. The format of `[i, j, by]` correlates to" subset/reorder rows using i, then calculate j, grouped by by.
+
+Thus to subset the data we will use `[i]`. But first let's see how we would subset the data using tidyverse and calculate how long that takes. We will use the employed data since it is larger and we will subset the data so we only have rows where `major_occupation == "Service occupations"`. To calculate how long tidyverse takes to subset the data we will use `tic()` and `toc()` from the package `{tictoc}`.
+
+
+```{r subset.tidy}
+tic()
+employed.filtered <- employed %>% 
+  filter(major_occupation == "Service occupations" | major_occupation == "Sales and office occupations" )
+subset.tidy.secs <- toc()
+
+```
+That took us `r subset.tidy.secs$toc - subset.tidy.secs$tic` seconds. Not very long, but you can imagine how much longer that may take with a larger dataset.
+
+Okay, now let's see how we would subset our employed data table using data.table. 
+```{r subset.dt}
+
+tic()
+employed.filtered.dt <- employed.dt[major_occupation == "Service occupations" |
+                                      major_occupation == "Sales and office occupations"]
+subset.dt.secs <- toc()
+
+```
+Whoa! only `r subset.dt.secs$toc - subset.dt.secs$tic` seconds. That is ~3x faster than tidyverse.
+
+```{r subset.plot}
+subset.res <- data.frame(method = c("tidyverse", "data.frame"), 
+                         secs = c(round(subset.tidy.secs$toc - subset.tidy.secs$tic, digits = 3),
+                                  round(subset.dt.secs$toc - subset.dt.secs$tic, digits = 3)))
+
+ggplot(data = subset.res, aes(x = method, y = secs, fill = method)) + 
+  geom_bar(stat = "identity") +
+  xlab("") +
+  geom_text(aes(label = secs), hjust = 1.5) +
+  coord_flip() +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_fill_npg() 
+
+```
+
+
+### Run calculations
+Calculate the median number of employed who are withing the "Service occupations" category.
+```{r calc.tidy}
+tic()
+ans.tidy <- employed %>%
+  filter(major_occupation == "Service occupations") %>%
+  summarize(med = median(employ_n, na.rm=TRUE))
+calc.tidy.secs <- toc()
+ans.tidy
+```
+
+```{r calc.dt}
+tic()
+ans.dt <- employed.dt[major_occupation == "Service occupations",
+               .(med_n = median(employ_n, na.rm = T))]
+calc.dt.secs <- toc()
+
+ans.dt
+```
+Okay so not as big of time savings here. Tidyverse took 0.032 seconds while data.table took 0.029 seconds.
+
+```{r calc.pots}
+calc.res <- data.frame(method = c("tidyverse", "data.frame"), 
+                       secs = c(round(calc.tidy.secs$toc - calc.tidy.secs$tic, digits = 3),
+                                round(calc.dt.secs$toc - calc.dt.secs$tic, digits = 3)))
+
+ggplot(data = calc.res, aes(x = method, y = secs, fill = method)) + 
+  geom_bar(stat = "identity") +
+  xlab("") +
+  geom_text(aes(label = secs), hjust = 1.5) +
+  coord_flip() +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_fill_npg() 
+
+```
+
+### Run calculations by group
+Now lets get the number of major occupations by industry. This will require we use the `group_by()` function in tidyverse and the `[by]` portion of data.table.
+
+```{r group.tidy}
+tic()
+employed %>%
+  group_by(industry) %>%
+  count(major_occupation)
+
+group.tidy.secs <- toc()
+```
+
+```{r group.dt}
+tic()
+employed.dt[, .N, by = .(industry,major_occupation)]
+group.dt.secs <- toc()
+```
+
+```{r grp.pots}
+calc.res <- data.frame(method = c("tidyverse", "data.frame"), 
+                       secs = c(round(group.tidy.secs$toc - group.tidy.secs$tic, digits = 3),
+                                round(group.dt.secs$toc - group.dt.secs$tic, digits =3)))
+
+ggplot(data = calc.res, aes(x = method, y = secs, fill = method)) + 
+  geom_bar(stat = "identity") +
+  xlab("") +
+  geom_text(aes(label = secs), hjust = 1.5) +
+  coord_flip() +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_fill_npg() 
+
+```
+
+## FYI
+Great reference for data.table: [link](https://cran.r-project.org/web/packages/data.table/vignettes/datatable-intro.html)
+
+## What I learned
+1. Data.table is faster than tidyverse. However, the largest gains are for subsetting and grouping data.
+2. There are two ways to select columns from data tabels: 
+Select columns the data.table way: DT[, .(colA, colB)]
+Select columns the data.frame way: DT[, c("colA", "colB")]
+3. The easiest way to think about the DT format of `DT[i, j, by]` is the following: Take DT, subset/reorder rows using i, then calculate j, grouped by by.
+
+<!-- ## Earnings by Sex -->
+<!-- ```{r} -->
+<!-- earning_df <- earn %>% -->
+<!--   group_by(sex, year) %>% -->
+<!--   summarise(mean = mean(median_weekly_earn)) -->
+
+
+<!-- ggplot(data = earning_df, aes(x = year, y = mean, color = sex)) +  -->
+<!--   geom_line() + -->
+<!--   theme_minimal() + -->
+<!--   ylab("Median Weekly Earnings") + -->
+<!--   xlab("Year") + -->
+<!--   scale_x_continuous(breaks = c(2010, 2015, 2020)) + -->
+<!--   theme(legend.title = element_blank(), -->
+<!--         legend.position = "bottom") -->
+<!-- ``` -->
+
+<!-- ## Earnings by race -->
+<!-- ```{r} -->
+<!-- earning_race_df <- earn %>% -->
+<!--   group_by(race, year) %>% -->
+<!--   summarise(mean = mean(median_weekly_earn)) -->
+
+<!-- ggplot(data = earning_race_df, aes(x = year, y = mean, color = race)) +  -->
+<!--   geom_line() + -->
+<!--   theme_minimal() + -->
+<!--   ylab("Median Weekly Earnings") + -->
+<!--   xlab("Year") + -->
+<!--   scale_x_continuous(breaks = c(2010, 2015, 2020)) + -->
+<!--   theme(legend.title = element_blank(), -->
+<!--         legend.position = "bottom") -->
+<!-- ``` -->
+
+<!-- ## Earnings by race and sex -->
+<!-- ```{r} -->
+<!-- earning_race_sex_df <- earn %>% -->
+<!--   group_by(sex, race, year) %>% -->
+<!--   summarise(mean = mean(median_weekly_earn)) -->
+
+<!-- ggplot(data = earning_race_sex_df, aes(x = year, y = mean, color = sex)) +  -->
+<!--   geom_line() + -->
+<!--   facet_wrap(vars(race)) +  -->
+<!--   theme_minimal() + -->
+<!--   ylab("Median Weekly Earnings") + -->
+<!--   xlab("Year") + -->
+<!--   scale_x_continuous(breaks = c(2010, 2015, 2020)) + -->
+<!--   theme(legend.title = element_blank(), -->
+<!--         legend.position = "bottom") -->
+<!-- ``` -->
+
+<!-- ## Employment by race and sex -->
+<!-- ```{r} -->
+<!-- employed <- as.factor(employed$race_gender) -->
+<!-- employment_race_sex_df <- employed %>% -->
+<!--   group_by(year, race_gender) %>% -->
+<!--   summarise(mean_industry_total = mean(industry_total), -->
+<!--             mean_employ_n = mean(employ_n), -->
+<!--             sum_industry_total = sum(industry_total), -->
+<!--             sum_employ_n = sum(employ_n)) %>% -->
+<!--   ungroup() -->
+<!-- ``` -->
+
+
+
+
+
